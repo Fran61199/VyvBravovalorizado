@@ -24,7 +24,7 @@ PAQUETE_BASE_PRICES = {
 
 CONDITIONAL_PRICES = {"ecg": 15.00, "hcg": 15.00}
 
-FILTRO_EXAM_PRICES = {"cocaina": 12.50, "marihuana": 12.50, "audimetria": 17.00}
+FILTRO_EXAM_PRICES = {"cocaina": 12.50, "marihuana": 12.50, "triaje": 8.00, "audimetria": 17.00}
 
 PROFILES_1_TO_5 = {"PERFIL I", "PERFIL II", "PERFIL III", "PERFIL IV", "PERFIL V"}
 
@@ -65,9 +65,9 @@ def normalize_tipo(tipo_raw):
     return TIPO_EXAMEN_MAP.get(str(tipo_raw).strip().upper(), None)
 
 
-def _exam_agendado(val):
-    """True si el examen está agendado (0=no realizado, 1=realizado; ambos cuentan)."""
-    return val in (0, 1)
+def _exam_realizado(val):
+    """True solo si el examen se realizó (valor 1 en CATALOGO)."""
+    return val == 1 or val == 1.0 or str(val).strip() == "1"
 
 
 def _get_base_profile_key(perfil_str):
@@ -94,7 +94,7 @@ def _get_base_profile_key(perfil_str):
     return None
 
 
-def get_pricing_columns(perfil, tipo_normalizado, sexo, exam_agendado):
+def get_pricing_columns(perfil, tipo_normalizado, sexo, exam_realizado):
     result = {
         "precio_base": None,
         "cocaina": None, "marihuana": None,
@@ -118,20 +118,22 @@ def get_pricing_columns(perfil, tipo_normalizado, sexo, exam_agendado):
     elif base_key and base_key in BASE_PRICE_TABLE:
         result["precio_base"] = BASE_PRICE_TABLE[base_key].get(tipo_normalizado)
 
-    # --- PERFIL FILTRO: cocaina, marihuana, audiometria ---
+    # --- PERFIL FILTRO: cocaina, marihuana, triaje, audiometria ---
     if base_key == "FILTRO":
-        if exam_agendado.get("cocaina"):
+        if exam_realizado.get("cocaina"):
             result["cocaina"] = FILTRO_EXAM_PRICES["cocaina"]
-        if exam_agendado.get("marihuana"):
+        if exam_realizado.get("marihuana"):
             result["marihuana"] = FILTRO_EXAM_PRICES["marihuana"]
-        if exam_agendado.get("audimetria"):
+        if exam_realizado.get("triaje"):
+            result["triaje"] = FILTRO_EXAM_PRICES["triaje"]
+        if exam_realizado.get("audimetria"):
             result["audimetria"] = FILTRO_EXAM_PRICES["audimetria"]
 
     # --- PERFILES I-V: solo ECG y HCG condicionales ---
     elif base_key in PROFILES_1_TO_5:
-        if exam_agendado.get("ecg"):
+        if exam_realizado.get("ecg"):
             result["ecg"] = CONDITIONAL_PRICES["ecg"]
-        if is_female and exam_agendado.get("hcg"):
+        if is_female and exam_realizado.get("hcg"):
             result["hcg"] = CONDITIONAL_PRICES["hcg"]
 
     # --- Paquetes ---
@@ -272,19 +274,19 @@ if uploaded_file is not None:
                     sexo = ws.cell(row=src_row_idx, column=sexo_col).value
                     tipo_norm = normalize_tipo(tipo_raw)
 
-                    exam_agendado = {
-                        "cocaina": _exam_agendado(ws.cell(row=src_row_idx, column=SRC_COL_COCAINA).value),
-                        "marihuana": _exam_agendado(ws.cell(row=src_row_idx, column=SRC_COL_MARIHUANA).value),
-                        "triaje": _exam_agendado(ws.cell(row=src_row_idx, column=SRC_COL_TRIAJE).value),
+                    exam_realizado = {
+                        "cocaina": _exam_realizado(ws.cell(row=src_row_idx, column=SRC_COL_COCAINA).value),
+                        "marihuana": _exam_realizado(ws.cell(row=src_row_idx, column=SRC_COL_MARIHUANA).value),
+                        "triaje": _exam_realizado(ws.cell(row=src_row_idx, column=SRC_COL_TRIAJE).value),
                         "audimetria": (
-                            _exam_agendado(ws.cell(row=src_row_idx, column=SRC_COL_AUDIOMETRIA).value)
-                            or _exam_agendado(ws.cell(row=src_row_idx, column=SRC_COL_KLOCKOFF).value)
+                            _exam_realizado(ws.cell(row=src_row_idx, column=SRC_COL_AUDIOMETRIA).value)
+                            or _exam_realizado(ws.cell(row=src_row_idx, column=SRC_COL_KLOCKOFF).value)
                         ),
-                        "ecg": _exam_agendado(ws.cell(row=src_row_idx, column=SRC_COL_ECG).value),
-                        "hcg": _exam_agendado(ws.cell(row=src_row_idx, column=SRC_COL_HCG).value),
+                        "ecg": _exam_realizado(ws.cell(row=src_row_idx, column=SRC_COL_ECG).value),
+                        "hcg": _exam_realizado(ws.cell(row=src_row_idx, column=SRC_COL_HCG).value),
                     }
 
-                    pricing = get_pricing_columns(perfil, tipo_norm, sexo, exam_agendado)
+                    pricing = get_pricing_columns(perfil, tipo_norm, sexo, exam_realizado)
 
                     for col in range(1, 20):
                         src_cell = ws.cell(row=src_row_idx, column=col)
