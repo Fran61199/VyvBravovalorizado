@@ -7,12 +7,12 @@ import zipfile
 
 # --- PRECIOS BASE POR PERFIL Y TIPO DE EXAMEN ---
 BASE_PRICE_TABLE = {
-    "PERFIL I": {"Pre-ocupacional": 95.00, "Anual": 85.00, "De Retiro": 22.00},
+    "PERFIL I": {"Pre-ocupacional": 110.00, "Anual": 85.00, "De Retiro": 22.00},
     "PERFIL II": {"Pre-ocupacional": 137.00, "Anual": 112.00, "De Retiro": 34.00},
     "PERFIL III": {"Pre-ocupacional": 164.00, "Anual": 139.00, "De Retiro": 34.00},
     "PERFIL IV": {"Pre-ocupacional": 137.00, "Anual": 112.00, "De Retiro": 34.00},
     "PERFIL V": {"Pre-ocupacional": 136.00, "Anual": 111.00, "De Retiro": 34.00},
-    "PERFIL VI": {"Pre-ocupacional": 151.00, "Anual": 114.00, "De Retiro": 22.00},
+    "PERFIL VI": {"Pre-ocupacional": 166.00, "Anual": 114.00, "De Retiro": 22.00},
 }
 
 
@@ -57,6 +57,44 @@ SRC_COL_AUDIOMETRIA = 28
 SRC_COL_KLOCKOFF = 42
 SRC_COL_ECG = 27
 SRC_COL_HCG = 44
+
+# Mapeo de palabras clave para detectar columnas CATALOGO dinámicamente
+CATALOGO_KEYWORDS = {
+    "cocaina": ["COCAINA", "COCAÍNA"],
+    "marihuana": ["MARIHUANA", "MARIHAUNA"],
+    "triaje": ["TRIAJE"],
+    "audiometria": ["AUDIOMETRIA", "AUDIOMETRÍA"],
+    "klockoff": ["KLOCKOFF"],
+    "ecg": ["ELECTROCARDIOGRAMA"],
+    "hcg": ["HCG", "EMBARAZO"],
+}
+
+
+def detect_catalogo_columns(ws, header_row=4):
+    """Detecta las columnas del CATALOGO buscando por palabras clave en los encabezados."""
+    detected = {
+        "cocaina": SRC_COL_COCAINA,
+        "marihuana": SRC_COL_MARIHUANA,
+        "triaje": SRC_COL_TRIAJE,
+        "audiometria": SRC_COL_AUDIOMETRIA,
+        "klockoff": SRC_COL_KLOCKOFF,
+        "ecg": SRC_COL_ECG,
+        "hcg": SRC_COL_HCG,
+    }
+
+    for col in range(1, ws.max_column + 1):
+        header_val = ws.cell(row=header_row, column=col).value
+        if not header_val:
+            continue
+        header_str = str(header_val).upper()
+
+        for exam_name, keywords in CATALOGO_KEYWORDS.items():
+            for keyword in keywords:
+                if keyword in header_str:
+                    detected[exam_name] = col
+                    break
+
+    return detected
 
 
 def normalize_tipo(tipo_raw):
@@ -171,6 +209,11 @@ if uploaded_file is not None:
     perfil_col = 18
     sexo_col = 10
 
+    # Detectar columnas CATALOGO dinámicamente
+    catalogo_cols = detect_catalogo_columns(ws, header_row)
+    st.info(f"Columnas CATALOGO detectadas: COCAINA={catalogo_cols['cocaina']}, MARIHUANA={catalogo_cols['marihuana']}, "
+            f"AUDIOMETRIA={catalogo_cols['audiometria']}, ECG={catalogo_cols['ecg']}, HCG={catalogo_cols['hcg']}")
+
     new_max_col = src_max_col + NUM_NEW_COLS
 
     proyectos = {}
@@ -275,15 +318,15 @@ if uploaded_file is not None:
                     tipo_norm = normalize_tipo(tipo_raw)
 
                     exam_incluido = {
-                        "cocaina": _exam_incluido(ws.cell(row=src_row_idx, column=SRC_COL_COCAINA).value),
-                        "marihuana": _exam_incluido(ws.cell(row=src_row_idx, column=SRC_COL_MARIHUANA).value),
-                        "triaje": _exam_incluido(ws.cell(row=src_row_idx, column=SRC_COL_TRIAJE).value),
+                        "cocaina": _exam_incluido(ws.cell(row=src_row_idx, column=catalogo_cols["cocaina"]).value),
+                        "marihuana": _exam_incluido(ws.cell(row=src_row_idx, column=catalogo_cols["marihuana"]).value),
+                        "triaje": _exam_incluido(ws.cell(row=src_row_idx, column=catalogo_cols["triaje"]).value),
                         "audimetria": (
-                            _exam_incluido(ws.cell(row=src_row_idx, column=SRC_COL_AUDIOMETRIA).value)
-                            or _exam_incluido(ws.cell(row=src_row_idx, column=SRC_COL_KLOCKOFF).value)
+                            _exam_incluido(ws.cell(row=src_row_idx, column=catalogo_cols["audiometria"]).value)
+                            or _exam_incluido(ws.cell(row=src_row_idx, column=catalogo_cols["klockoff"]).value)
                         ),
-                        "ecg": _exam_incluido(ws.cell(row=src_row_idx, column=SRC_COL_ECG).value),
-                        "hcg": _exam_incluido(ws.cell(row=src_row_idx, column=SRC_COL_HCG).value),
+                        "ecg": _exam_incluido(ws.cell(row=src_row_idx, column=catalogo_cols["ecg"]).value),
+                        "hcg": _exam_incluido(ws.cell(row=src_row_idx, column=catalogo_cols["hcg"]).value),
                     }
 
                     pricing = get_pricing_columns(perfil, tipo_norm, sexo, exam_incluido)
